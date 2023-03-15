@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+
 import 'product.dart';
 
 class Products with ChangeNotifier {
@@ -47,11 +50,107 @@ class Products with ChangeNotifier {
     return _items.where((element) => element.isFavorite).toList();
   }
 
-  void addProduct() {
-    notifyListeners();
+  Future<void> fetchAndSetProducts() async {
+    final url = Uri.https(
+        'fldemo-shop-default-rtdb.europe-west1.firebasedatabase.app',
+        '/products.json');
+    try {
+      final response = await http.get(url);
+      final extractedData = json.decode(response.body) as Map<String, dynamic>;
+      final List<Product> loadedProducts = [];
+      extractedData.forEach((prodId, prodData) {
+        if (!prodData.containsKey('isFavorite')) {
+          prodData['isFavorite'] = false;
+        }
+        loadedProducts.add(
+          Product(
+            id: prodId,
+            title: prodData['title'],
+            description: prodData['description'],
+            price: prodData['price'],
+            imageUrl: prodData['imageUrl'],
+            isFavorite: prodData['isFavorite'],
+          ),
+        );
+      });
+      _items = loadedProducts;
+      notifyListeners();
+    } catch (error) {
+      print(error);
+      throw (error);
+    }
+  }
+
+  Future<void> addProduct(Product product) {
+    final url = Uri.https(
+        'fldemo-shop-default-rtdb.europe-west1.firebasedatabase.app',
+        '/products.json');
+    return http
+        .post(
+      url,
+      body: json.encode(
+        {
+          'title': product.title,
+          'description': product.description,
+          'imageUrl': product.imageUrl,
+          'price': product.price,
+          'isFavorite': product.isFavorite,
+        },
+      ),
+    )
+        .then(
+      (response) {
+        final newProduct = Product(
+          id: json.decode(response.body)['name'],
+          title: product.title,
+          description: product.description,
+          price: product.price,
+          imageUrl: product.imageUrl,
+        );
+        _items.add(newProduct);
+        notifyListeners();
+      },
+    ).catchError((error) {
+      print("ERRRoooooooooooooooooooooooooooR");
+      print(error);
+      throw (error);
+    });
   }
 
   Product findById(String id) {
     return _items.firstWhere((element) => element.id == id);
+  }
+
+  Future<void> updateProduct(String id, Product newProduct) async {
+    final prodIndex = items.indexWhere((prod) => prod.id == id);
+    print("Must update the product from index $prodIndex");
+    if (prodIndex >= 0) {
+      final url = Uri.https(
+          'fldemo-shop-default-rtdb.europe-west1.firebasedatabase.app',
+          '/products/$id.json');
+      http.patch(
+        url,
+        body: json.encode(
+          {
+            'title': newProduct.title,
+            'description': newProduct.description,
+            'imageUrl': newProduct.imageUrl,
+            'price': newProduct.price,
+          },
+        ),
+      );
+      _items[prodIndex] = newProduct;
+      print("New price is: ${_items[prodIndex].price}");
+      notifyListeners();
+    }
+  }
+
+  void deleteProduct(String id) {
+    final url = Uri.https(
+        'fldemo-shop-default-rtdb.europe-west1.firebasedatabase.app',
+        '/products/$id.json');
+    http.delete(url);
+    _items.removeWhere((prod) => prod.id == id);
+    notifyListeners();
   }
 }
